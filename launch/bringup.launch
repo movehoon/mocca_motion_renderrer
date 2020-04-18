@@ -1,0 +1,5 @@
+<launch>
+    <!-- <param name="robot_description" command="cat $(find mocca_description)/urdf/mocca.urdf" /> -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+    <node name="mocca_motion_renderrer" pkg="mocca_motion_renderrer" type="mocca_motion_renderrer.py" />
+</launch>
