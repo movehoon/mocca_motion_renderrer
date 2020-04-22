@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
-import roslib
-roslib.load_manifest('mocca_motion_renderrer')
 import rospy
 import actionlib
 from sensor_msgs.msg import JointState
-# from mocca_motion_renderrer.msg import MoccaMotionAction, MoccaMotionFeedback, MoccaMotionResult
+# from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryFeedback, FollowJointTrajectoryResult
+from mocca_motion_renderrer.msg import MoccaMotionAction, MoccaMotionFeedback, MoccaMotionResult
 import json
 import time
 import math
@@ -28,7 +27,7 @@ class Motion:
         self.frames.append(frame)
 
     def loadJson(self, jsonString):
-        json_obj = json.load(jsonString)
+        json_obj = json.loads(jsonString)
         # print('json_obj')
         # print(json_obj['DoubleArrays'])
         # print(len(json_obj['DoubleArrays']))
@@ -43,14 +42,22 @@ class Motion:
 
 
 class MoccaMotion():
+
+    _feedback = MoccaMotionFeedback()
+    _result = MoccaMotionResult()
+
     def __init__(self):
         self.joint_name = ['joint_left_1', 'joint_left_2', 'joint_left_3', \
                           'joint_right_1', 'joint_right_2', 'joint_right_3', \
                           'joint_head_yaw', 'joint_head_pitch']
         self.dir = [1, -1, -1, 1, -1, -1, -1, 1]
 
-        # self.server = actionlib.SimpleActionServer('motion', MoccaMotionAction, self.execute, False)
-        # self.server.start()
+        self.server = actionlib.SimpleActionServer(
+            '/mocca_motion',
+            MoccaMotionAction,
+            self.execute,
+            False)
+        self.server.start()
 
 
     def execute(self, goal):
@@ -66,10 +73,7 @@ class MoccaMotion():
 
         # print(goal)
         motion = Motion()
-        motion.loadJson(goal)
-
-
-
+        motion.loadJson(goal.motion_data)
 
         start_time = time.time()
         total_time = 0
@@ -119,19 +123,23 @@ class MoccaMotion():
             # print('neck:', joint_state.position[0])
             joint_state.header.stamp = rospy.Time.now()
             joint_pub.publish(joint_state)
+            self._feedback.processing = going_time / total_time
+            self.server.publish_feedback(self._feedback)
             rate.sleep()
 
         print('done')
         # rospy.loginfo(joint_state)
         rate.sleep()
-        # self.server.set_succeeded()
+        self._result.success = True
+        self.server.set_succeeded(self._result)
 
 
 if __name__ == '__main__':
     try:
         rospy.init_node('mocca_motion_renderrer')
         server = MoccaMotion()
-        with open('HI_after.json') as json_file:
-            server.execute(json_file)
+        rospy.spin()
+        # with open('HI_after.json') as json_file:
+        #     server.execute(json_file)
     except rospy.ROSInterruptException:
         pass
