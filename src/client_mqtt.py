@@ -16,7 +16,7 @@ def mocca_motion_client(motion_string):
 
     # Creates a goal to send to the action server.
     goal = MoccaMotionGoal(motion_data=motion_string)
-    print('goal:', goal.motion_data)
+    # print('goal:', goal.motion_data)
 
     # Sends the goal to the action server.
     client.send_goal(goal)
@@ -49,6 +49,12 @@ if __name__ == '__main__':
         mqttClient.on_connect = on_connect
         mqttClient.on_message = on_message
         mqttClient.connect("121.137.95.17", 1883, 60)
-        mqttClient.loop_forever()
+        # while not mqttClient.connected_flag:
+        #     time.sleep(1)
+        # mqttClient.loop_stop()
+        # mqttClient.disconnect()
+        mqttClient.loop_start()
+        rospy.spin()
+
     except rospy.ROSInterruptException:
         print("program interrupted before completion", sys.stderr)
