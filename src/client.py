@@ -33,6 +33,6 @@ if __name__ == '__main__':
         # publish and subscribe over ROS.
         rospy.init_node('mocca_motion_client')
         result = mocca_motion_client()
-        print("Result:", ', '.join([str(n) for n in result.sequence]))
+        print("Result:", result)
     except rospy.ROSInterruptException:
         print("program interrupted before completion", sys.stderr)

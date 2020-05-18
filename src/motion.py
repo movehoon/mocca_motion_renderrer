@@ -14,9 +14,9 @@ from dynamixel_sdk import *                    # Uses Dynamixel SDK library
 
 
 # Control table address
-ADDR_MX_TORQUE_ENABLE      = 24               # Control table address is different in Dynamixel model
-ADDR_MX_GOAL_POSITION      = 30
-ADDR_MX_PRESENT_POSITION   = 36
+ADDR_AX_TORQUE_ENABLE      = 24               # Control table address is different in Dynamixel model
+ADDR_AX_GOAL_POSITION      = 30
+ADDR_AX_PRESENT_POSITION   = 36
 
 # Protocol version
 PROTOCOL_VERSION            = 1.0               # See which protocol version is used in the Dynamixel
@@ -26,6 +26,8 @@ DXL_ID                      = 11                 # Dynamixel ID : 1
 BAUDRATE                    = 1000000             # Dynamixel default baudrate : 57600
 DEVICENAME                  = '/dev/ttyUSB0'    # Check which port is being used on your controller
                                                 # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
+TORQUE_ENABLE               = 1                 # Value for enabling the torque
+TORQUE_DISABLE              = 0                 # Value for disabling the torque
 
 
 
@@ -66,6 +68,59 @@ class MoccaMotion():
     _feedback = MoccaMotionFeedback()
     _result = MoccaMotionResult()
 
+    def dxlDegToPos(self, degree, direction):
+        position = 512 + (degree*3.45) * direction
+        return int(position)
+
+    def dxlInit(self):
+        # Initialize PortHandler instance
+        # Set the port path
+        # Get methods and members of PortHandlerLinux or PortHandlerWindows
+        self.portHandler = PortHandler(DEVICENAME)
+
+        # Initialize PacketHandler instance
+        # Set the protocol version
+        # Get methods and members of Protocol1PacketHandler or Protocol2PacketHandler
+        self.packetHandler = PacketHandler(PROTOCOL_VERSION)
+
+        # Open port
+        if self.portHandler.openPort():
+            print("Succeeded to open the port")
+        else:
+            print("Failed to open the port")
+            print("Press any key to terminate...")
+
+
+        # Set port baudrate
+        if self.portHandler.setBaudRate(BAUDRATE):
+            print("Succeeded to change the baudrate")
+        else:
+            print("Failed to change the baudrate")
+            print("Press any key to terminate...")
+
+
+    def dxlEnabble(self, dxl_id, enable):
+        # Enable Dynamixel Torque
+        dxl_comm_result, dxl_error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_AX_TORQUE_ENABLE, enable)
+        if dxl_comm_result != COMM_SUCCESS:
+            print("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
+        elif dxl_error != 0:
+            print("%s" % self.packetHandler.getRxPacketError(dxl_error))
+        else:
+            print("Dynamixel has been successfully connected")
+
+
+    def dxlPosition(self, dxl_id, position):
+        # Write goal position
+        # print('[dxlPosition]dxl_id:', dxl_id, 'position:', position)
+        dxl_comm_result, dxl_error = self.packetHandler.write2ByteTxRx(self.portHandler, dxl_id, ADDR_AX_GOAL_POSITION, position)
+        if dxl_comm_result != COMM_SUCCESS:
+            print("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
+        elif dxl_error != 0:
+            print("%s" % self.packetHandler.getRxPacketError(dxl_error))
+
+
+
     def __init__(self):
         self.joint_name = ['joint_left_1', 'joint_left_2', 'joint_left_3', \
                           'joint_right_1', 'joint_right_2', 'joint_right_3', \
@@ -78,6 +133,11 @@ class MoccaMotion():
             self.execute,
             False)
         self.server.start()
+        self.dxlInit()
+
+        self.dxlEnabble(DXL_ID, TORQUE_ENABLE)
+        self.dxlPosition(DXL_ID, 512)
+
         print("Mocca motion ready");
 
 
@@ -130,6 +190,10 @@ class MoccaMotion():
                         break
                     pose_target = motion.frames[frame_index].pose
                     print('frame_index:', frame_index, 'pose:', pose_target.angles)
+
+                    pos = self.dxlDegToPos(pose_target.angles[7], -1)
+                    self.dxlPosition(DXL_ID, pos)
+                    print('[DXL]', pose_target.angles[6], ' => ', pos)
                     continue
 
                 del joint_state.name[:]
