@@ -16,7 +16,7 @@ def mocca_motion_client(motion_string):
 
     # Creates a goal to send to the action server.
     goal = MoccaMotionGoal(motion_data=motion_string)
-    # print('goal:', goal.motion_data)
+    print('goal:', goal.motion_data)
 
     # Sends the goal to the action server.
     client.send_goal(goal)

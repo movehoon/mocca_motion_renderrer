@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import rospy
 import actionlib
@@ -8,6 +9,25 @@ from mocca_motion_renderrer.msg import MoccaMotionAction, MoccaMotionFeedback, M
 import json
 import time
 import math
+
+from dynamixel_sdk import *                    # Uses Dynamixel SDK library
+
+
+# Control table address
+ADDR_MX_TORQUE_ENABLE      = 24               # Control table address is different in Dynamixel model
+ADDR_MX_GOAL_POSITION      = 30
+ADDR_MX_PRESENT_POSITION   = 36
+
+# Protocol version
+PROTOCOL_VERSION            = 1.0               # See which protocol version is used in the Dynamixel
+
+# Default setting
+DXL_ID                      = 11                 # Dynamixel ID : 1
+BAUDRATE                    = 1000000             # Dynamixel default baudrate : 57600
+DEVICENAME                  = '/dev/ttyUSB0'    # Check which port is being used on your controller
+                                                # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
+
+
 
 class Pose:
     def __init__(self, angles=None):
@@ -33,9 +53,9 @@ class Motion:
         # print(len(json_obj['DoubleArrays']))
         for obj in json_obj['DoubleArrays']:
             # print(obj['array'][1:])
-            pose = Pose(obj['array'][1:])
+            pose = Pose(obj['array'])
             # print(pose)
-            frame = MotionFrame(obj['array'][0], pose)
+            frame = MotionFrame(obj['time'], pose)
             # print(frame.eta)
             self.append(frame)
 
@@ -58,6 +78,8 @@ class MoccaMotion():
             self.execute,
             False)
         self.server.start()
+        print("Mocca motion ready");
+
 
 
     def execute(self, goal):
@@ -72,65 +94,72 @@ class MoccaMotion():
         # self.motion = json_string
 
         # print(goal)
-        motion = Motion()
-        motion.loadJson(goal.motion_data)
 
-        start_time = time.time()
-        total_time = 0
-        going_time = 0
+        try:
+            motion = Motion()
+            motion.loadJson(goal.motion_data)
 
-        frame_index = 0
-        frame_total = len(motion.frames)
-        frame_start_time = time.time()
-        frame_going_time = 0
-        frame_target_time = motion.frames[0].eta
-        for f in motion.frames:
-            total_time = total_time + f.eta
-        print('total_time: ', total_time)
+            start_time = time.time()
+            total_time = 0
+            going_time = 0
 
-        pose_start = Pose([0,0,0,0,0,0,0,0])
-        pose_actual = Pose([0,0,0,0,0,0,0,0])
-        pose_target = motion.frames[frame_index].pose
+            frame_index = 0
+            frame_total = len(motion.frames)
+            frame_start_time = time.time()
+            frame_going_time = 0
+            frame_target_time = motion.frames[0].eta
+            for f in motion.frames:
+                total_time = total_time + f.eta
+            print('total_time: ', total_time)
 
-        while frame_index < frame_total:
-            # print('fram_id:', frame_index, 'total:', frame_total)
-            going_time = time.time() - start_time
-            frame_going_time = time.time() - frame_start_time
-            frame_target_time = motion.frames[frame_index].eta
+            pose_start = Pose([0,0,0,0,0,0,0,0])
+            pose_actual = Pose([0,0,0,0,0,0,0,0])
+            pose_target = motion.frames[frame_index].pose
 
-            if (frame_going_time > motion.frames[frame_index].eta):
-                pose_start = motion.frames[frame_index].pose
-                frame_start_time = time.time()
-                frame_index = frame_index + 1
-                if (frame_index >= frame_total):
-                    break
-                pose_target = motion.frames[frame_index].pose
-                print('frame_index:', frame_index, 'pose:', pose_target.angles)
-                continue
+            while frame_index < frame_total:
+                # print('fram_id:', frame_index, 'total:', frame_total)
+                going_time = time.time() - start_time
+                frame_going_time = time.time() - frame_start_time
+                frame_target_time = motion.frames[frame_index].eta
 
-            del joint_state.name[:]
-            del joint_state.position[:]
-            time_ration = 1
-            if motion.frames[frame_index].eta != 0:
-                time_ratio = frame_going_time/motion.frames[frame_index].eta
-            # print('frame_dur:', frame_going_time, ', time_ratio:', time_ratio)
-            for i in range(len(motion.frames[0].pose.angles)):
-                joint_state.name.append(self.joint_name[i])
-                # print('frame_going_time:', frame_going_time)
-                pose_actual.angles[i] = (pose_target.angles[i]-pose_start.angles[i])*time_ratio + pose_start.angles[i]
-                joint_state.position.append(pose_actual.angles[i]*math.pi/180*self.dir[i])
+                if (frame_going_time > motion.frames[frame_index].eta):
+                    pose_start = motion.frames[frame_index].pose
+                    frame_start_time = time.time()
+                    frame_index = frame_index + 1
+                    if (frame_index >= frame_total):
+                        break
+                    pose_target = motion.frames[frame_index].pose
+                    print('frame_index:', frame_index, 'pose:', pose_target.angles)
+                    continue
 
-            # print('neck:', joint_state.position[0])
-            joint_state.header.stamp = rospy.Time.now()
-            joint_pub.publish(joint_state)
-            self._feedback.processing = going_time / total_time
-            self.server.publish_feedback(self._feedback)
-            rate.sleep()
+                del joint_state.name[:]
+                del joint_state.position[:]
+                time_ration = 1
+                if motion.frames[frame_index].eta != 0:
+                    time_ratio = frame_going_time/motion.frames[frame_index].eta
+                # print('frame_dur:', frame_going_time, ', time_ratio:', time_ratio)
+                for i in range(len(motion.frames[0].pose.angles)):
+                    joint_state.name.append(self.joint_name[i])
+                    # print('frame_going_time:', frame_going_time)
+                    pose_actual.angles[i] = (pose_target.angles[i]-pose_start.angles[i])*time_ratio + pose_start.angles[i]
+                    joint_state.position.append(pose_actual.angles[i]*math.pi/180*self.dir[i])
+
+                # print('neck:', joint_state.position[0])
+                joint_state.header.stamp = rospy.Time.now()
+                joint_pub.publish(joint_state)
+                self._feedback.processing = going_time / total_time
+                self.server.publish_feedback(self._feedback)
+                rate.sleep()
+            self._result.success = True
+            print('success')
+        except:
+            self._result.success = False
+            print('fail')
+
 
         print('done')
         # rospy.loginfo(joint_state)
         rate.sleep()
-        self._result.success = True
         self.server.set_succeeded(self._result)
 
 

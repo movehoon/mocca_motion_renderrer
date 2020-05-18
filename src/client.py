@@ -14,7 +14,7 @@ def mocca_motion_client():
     client.wait_for_server()
 
     # Creates a goal to send to the action server.
-    with open('/home/parallels/HI_after.json') as json_file:
+    with open('/home/parallels/OK.json') as json_file:
         goal = MoccaMotionGoal(motion_data=json_file.read())
         print('goal:', goal.motion_data)
 
