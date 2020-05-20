@@ -16,7 +16,7 @@ def mocca_motion_client(motion_string):
 
     # Creates a goal to send to the action server.
     goal = MoccaMotionGoal(motion_data=motion_string)
-    print('goal:', goal.motion_data)
+    rospy.loginfo('goal:', goal.motion_data)
 
     # Sends the goal to the action server.
     client.send_goal(goal)
@@ -29,7 +29,7 @@ def mocca_motion_client(motion_string):
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
-    print("Connected with result code "+str(rc))
+    rospy.loginfo("Connected with result code "+str(rc))
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
@@ -37,9 +37,9 @@ def on_connect(client, userdata, flags, rc):
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
+    rospy.loginfo(msg.topic+" "+str(msg.payload))
     result = mocca_motion_client(msg.payload)
-    print("Result:", ', '.join([str(n) for n in result.sequence]))
+    rospy.loginfo("Result:", ', '.join([str(n) for n in result.sequence]))
 
 if __name__ == '__main__':
     try:
@@ -57,4 +57,4 @@ if __name__ == '__main__':
         rospy.spin()
 
     except rospy.ROSInterruptException:
-        print("program interrupted before completion", sys.stderr)
+        rospy.logerr("program interrupted before completion", sys.stderr)

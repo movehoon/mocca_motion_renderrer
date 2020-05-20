@@ -34,7 +34,7 @@ TORQUE_DISABLE              = 0                 # Value for disabling the torque
 class Pose:
     def __init__(self, angles=None):
         self.angles = angles if angles is not None else []
-        # print(self.angles)
+        # rospy.loginfo(self.angles)
 
 class MotionFrame:
     def __init__(self, estimated_time_to_arrival, pose=Pose):
@@ -50,15 +50,15 @@ class Motion:
 
     def loadJson(self, jsonString):
         json_obj = json.loads(jsonString)
-        # print('json_obj')
-        # print(json_obj['DoubleArrays'])
-        # print(len(json_obj['DoubleArrays']))
+        # rospy.loginfo('json_obj')
+        # rospy.loginfo(json_obj['DoubleArrays'])
+        # rospy.loginfo(len(json_obj['DoubleArrays']))
         for obj in json_obj['DoubleArrays']:
-            # print(obj['array'][1:])
+            # rospy.loginfo(obj['array'][1:])
             pose = Pose(obj['array'])
-            # print(pose)
+            # rospy.loginfo(pose)
             frame = MotionFrame(obj['time'], pose)
-            # print(frame.eta)
+            # rospy.loginfo(frame.eta)
             self.append(frame)
 
 
@@ -84,30 +84,33 @@ class MoccaMotion():
         self.packetHandler = PacketHandler(PROTOCOL_VERSION)
 
         # Open port
-        if self.portHandler.openPort():
-            print("Succeeded to open the port")
-        else:
-            print("Failed to open the port")
-            print("Press any key to terminate...")
-
+        try :
+            if self.portHandler.openPort():
+                rospy.loginfo("Succeeded to open the port")
+            else:
+                rospy.logerr("Failed to open the port %s", DEVICENAME)
+                return
+        except:
+            rospy.logerr("Failed to open the port %s", DEVICENAME)
+            return
 
         # Set port baudrate
         if self.portHandler.setBaudRate(BAUDRATE):
-            print("Succeeded to change the baudrate")
+            rospy.loginfo("Succeeded to change the baudrate")
         else:
-            print("Failed to change the baudrate")
-            print("Press any key to terminate...")
+            rospy.logerr("Failed to change the baudrate %s", BAUDRATE)
+            return
 
 
     def dxlEnabble(self, dxl_id, enable):
         # Enable Dynamixel Torque
         dxl_comm_result, dxl_error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_AX_TORQUE_ENABLE, enable)
         if dxl_comm_result != COMM_SUCCESS:
-            print("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
+            rospy.logerr("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
         elif dxl_error != 0:
-            print("%s" % self.packetHandler.getRxPacketError(dxl_error))
+            rospy.logerr("%s" % self.packetHandler.getRxPacketError(dxl_error))
         else:
-            print("Dynamixel has been successfully connected")
+            rospy.loginfo("Dynamixel has been successfully connected")
 
 
     def dxlPosition(self, dxl_id, position):
@@ -115,9 +118,9 @@ class MoccaMotion():
         # print('[dxlPosition]dxl_id:', dxl_id, 'position:', position)
         dxl_comm_result, dxl_error = self.packetHandler.write2ByteTxRx(self.portHandler, dxl_id, ADDR_AX_GOAL_POSITION, position)
         if dxl_comm_result != COMM_SUCCESS:
-            print("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
+            rospy.logerr("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
         elif dxl_error != 0:
-            print("%s" % self.packetHandler.getRxPacketError(dxl_error))
+            rospy.loginfo("%s" % self.packetHandler.getRxPacketError(dxl_error))
 
 
 
@@ -133,12 +136,12 @@ class MoccaMotion():
             self.execute,
             False)
         self.server.start()
+
         self.dxlInit()
+        # self.dxlEnabble(DXL_ID, TORQUE_ENABLE)
+        # self.dxlPosition(DXL_ID, 512)
 
-        self.dxlEnabble(DXL_ID, TORQUE_ENABLE)
-        self.dxlPosition(DXL_ID, 512)
-
-        print("Mocca motion ready");
+        rospy.loginfo("Mocca motion ready");
 
 
 
@@ -156,6 +159,7 @@ class MoccaMotion():
         # print(goal)
 
         try:
+            rospy.loginfo("execute goal: ", goal.motion_data)
             motion = Motion()
             motion.loadJson(goal.motion_data)
 
@@ -170,14 +174,14 @@ class MoccaMotion():
             frame_target_time = motion.frames[0].eta
             for f in motion.frames:
                 total_time = total_time + f.eta
-            print('total_time: ', total_time)
+            rospy.loginfo('total_time: ', total_time)
 
             pose_start = Pose([0,0,0,0,0,0,0,0])
             pose_actual = Pose([0,0,0,0,0,0,0,0])
             pose_target = motion.frames[frame_index].pose
 
             while frame_index < frame_total:
-                # print('fram_id:', frame_index, 'total:', frame_total)
+                # rospy.loginfo('fram_id:', frame_index, 'total:', frame_total)
                 going_time = time.time() - start_time
                 frame_going_time = time.time() - frame_start_time
                 frame_target_time = motion.frames[frame_index].eta
@@ -189,11 +193,11 @@ class MoccaMotion():
                     if (frame_index >= frame_total):
                         break
                     pose_target = motion.frames[frame_index].pose
-                    print('frame_index:', frame_index, 'pose:', pose_target.angles)
+                    rospy.loginfo('frame_index:', frame_index, 'pose:', pose_target.angles)
 
-                    pos = self.dxlDegToPos(pose_target.angles[7], -1)
-                    self.dxlPosition(DXL_ID, pos)
-                    print('[DXL]', pose_target.angles[6], ' => ', pos)
+                    # pos = self.dxlDegToPos(pose_target.angles[7], -1)
+                    # self.dxlPosition(DXL_ID, pos)
+                    # rospy.loginfo('[DXL]', pose_target.angles[6], ' => ', pos)
                     continue
 
                 del joint_state.name[:]
@@ -201,27 +205,27 @@ class MoccaMotion():
                 time_ration = 1
                 if motion.frames[frame_index].eta != 0:
                     time_ratio = frame_going_time/motion.frames[frame_index].eta
-                # print('frame_dur:', frame_going_time, ', time_ratio:', time_ratio)
+                # rospy.loginfo('frame_dur:', frame_going_time, ', time_ratio:', time_ratio)
                 for i in range(len(motion.frames[0].pose.angles)):
                     joint_state.name.append(self.joint_name[i])
-                    # print('frame_going_time:', frame_going_time)
+                    # rospy.loginfo('frame_going_time:', frame_going_time)
                     pose_actual.angles[i] = (pose_target.angles[i]-pose_start.angles[i])*time_ratio + pose_start.angles[i]
                     joint_state.position.append(pose_actual.angles[i]*math.pi/180*self.dir[i])
 
-                # print('neck:', joint_state.position[0])
+                # rospy.loginfo('neck:', joint_state.position[0])
                 joint_state.header.stamp = rospy.Time.now()
                 joint_pub.publish(joint_state)
                 self._feedback.processing = going_time / total_time
                 self.server.publish_feedback(self._feedback)
                 rate.sleep()
             self._result.success = True
-            print('success')
+            rospy.loginfo('success')
         except:
             self._result.success = False
-            print('fail')
+            rospy.logerr('fail')
 
 
-        print('done')
+        rospy.loginfo('done')
         # rospy.loginfo(joint_state)
         rate.sleep()
         self.server.set_succeeded(self._result)
