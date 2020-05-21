@@ -16,7 +16,7 @@ def mocca_motion_client():
     # Creates a goal to send to the action server.
     with open('/home/parallels/OK.json') as json_file:
         goal = MoccaMotionGoal(motion_data=json_file.read())
-        rospy.loginfo('goal:', goal.motion_data)
+        rospy.loginfo('goal:%s', goal.motion_data)
 
         # Sends the goal to the action server.
         client.send_goal(goal)
@@ -33,6 +33,6 @@ if __name__ == '__main__':
         # publish and subscribe over ROS.
         rospy.init_node('mocca_motion_client')
         result = mocca_motion_client()
-        rospy.loginfo("Result:", result)
+        rospy.loginfo("Result: %s", str(result))
     except rospy.ROSInterruptException:
         rospy.logerr("program interrupted before completion", sys.stderr)

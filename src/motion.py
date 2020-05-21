@@ -6,29 +6,10 @@ import actionlib
 from sensor_msgs.msg import JointState
 # from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryFeedback, FollowJointTrajectoryResult
 from mocca_motion_renderrer.msg import MoccaMotionAction, MoccaMotionFeedback, MoccaMotionResult
+from std_msgs.msg import Float32MultiArray, Int8, Int16MultiArray, MultiArrayLayout
 import json
 import time
 import math
-
-from dynamixel_sdk import *                    # Uses Dynamixel SDK library
-
-
-# Control table address
-ADDR_AX_TORQUE_ENABLE      = 24               # Control table address is different in Dynamixel model
-ADDR_AX_GOAL_POSITION      = 30
-ADDR_AX_PRESENT_POSITION   = 36
-
-# Protocol version
-PROTOCOL_VERSION            = 1.0               # See which protocol version is used in the Dynamixel
-
-# Default setting
-DXL_ID                      = 11                 # Dynamixel ID : 1
-BAUDRATE                    = 1000000             # Dynamixel default baudrate : 57600
-DEVICENAME                  = '/dev/ttyUSB0'    # Check which port is being used on your controller
-                                                # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
-TORQUE_ENABLE               = 1                 # Value for enabling the torque
-TORQUE_DISABLE              = 0                 # Value for disabling the torque
-
 
 
 class Pose:
@@ -68,61 +49,6 @@ class MoccaMotion():
     _feedback = MoccaMotionFeedback()
     _result = MoccaMotionResult()
 
-    def dxlDegToPos(self, degree, direction):
-        position = 512 + (degree*3.45) * direction
-        return int(position)
-
-    def dxlInit(self):
-        # Initialize PortHandler instance
-        # Set the port path
-        # Get methods and members of PortHandlerLinux or PortHandlerWindows
-        self.portHandler = PortHandler(DEVICENAME)
-
-        # Initialize PacketHandler instance
-        # Set the protocol version
-        # Get methods and members of Protocol1PacketHandler or Protocol2PacketHandler
-        self.packetHandler = PacketHandler(PROTOCOL_VERSION)
-
-        # Open port
-        try :
-            if self.portHandler.openPort():
-                rospy.loginfo("Succeeded to open the port")
-            else:
-                rospy.logerr("Failed to open the port %s", DEVICENAME)
-                return
-        except:
-            rospy.logerr("Failed to open the port %s", DEVICENAME)
-            return
-
-        # Set port baudrate
-        if self.portHandler.setBaudRate(BAUDRATE):
-            rospy.loginfo("Succeeded to change the baudrate")
-        else:
-            rospy.logerr("Failed to change the baudrate %s", BAUDRATE)
-            return
-
-
-    def dxlEnabble(self, dxl_id, enable):
-        # Enable Dynamixel Torque
-        dxl_comm_result, dxl_error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_AX_TORQUE_ENABLE, enable)
-        if dxl_comm_result != COMM_SUCCESS:
-            rospy.logerr("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
-        elif dxl_error != 0:
-            rospy.logerr("%s" % self.packetHandler.getRxPacketError(dxl_error))
-        else:
-            rospy.loginfo("Dynamixel has been successfully connected")
-
-
-    def dxlPosition(self, dxl_id, position):
-        # Write goal position
-        # print('[dxlPosition]dxl_id:', dxl_id, 'position:', position)
-        dxl_comm_result, dxl_error = self.packetHandler.write2ByteTxRx(self.portHandler, dxl_id, ADDR_AX_GOAL_POSITION, position)
-        if dxl_comm_result != COMM_SUCCESS:
-            rospy.logerr("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
-        elif dxl_error != 0:
-            rospy.loginfo("%s" % self.packetHandler.getRxPacketError(dxl_error))
-
-
 
     def __init__(self):
         self.joint_name = ['joint_left_1', 'joint_left_2', 'joint_left_3', \
@@ -137,15 +63,15 @@ class MoccaMotion():
             False)
         self.server.start()
 
-        self.dxlInit()
-        # self.dxlEnabble(DXL_ID, TORQUE_ENABLE)
-        # self.dxlPosition(DXL_ID, 512)
+        self.pubAngles = rospy.Publisher('mocca_robot_goal_angle', Float32MultiArray, queue_size=10)
+        self.pubPose = rospy.Publisher('mocca_robot_goal_pose', Float32MultiArray, queue_size=10)
 
         rospy.loginfo("Mocca motion ready");
 
 
 
     def execute(self, goal):
+        rospy.loginfo("execute %s", str(goal));
         finished = False
         # feedback = MoccaMotionFeedback
         # result = MoccaMotionResult
@@ -159,7 +85,7 @@ class MoccaMotion():
         # print(goal)
 
         try:
-            rospy.loginfo("execute goal: ", goal.motion_data)
+            rospy.loginfo("execute goal: %s", goal.motion_data)
             motion = Motion()
             motion.loadJson(goal.motion_data)
 
@@ -174,14 +100,21 @@ class MoccaMotion():
             frame_target_time = motion.frames[0].eta
             for f in motion.frames:
                 total_time = total_time + f.eta
-            rospy.loginfo('total_time: ', total_time)
+            rospy.loginfo('total_time: %f', total_time)
 
             pose_start = Pose([0,0,0,0,0,0,0,0])
             pose_actual = Pose([0,0,0,0,0,0,0,0])
             pose_target = motion.frames[frame_index].pose
 
+            pub_msg = Float32MultiArray()
+            pub_msg.layout = MultiArrayLayout()
+            pub_msg.layout.data_offset = int(motion.frames[frame_index].eta * 1000)
+            pub_msg.data = pose_target.angles
+            self.pubPose.publish(pub_msg)
+
+
             while frame_index < frame_total:
-                # rospy.loginfo('fram_id:', frame_index, 'total:', frame_total)
+                # rospy.loginfo('fram_id: %d, total: %d', frame_index, frame_total)
                 going_time = time.time() - start_time
                 frame_going_time = time.time() - frame_start_time
                 frame_target_time = motion.frames[frame_index].eta
@@ -193,11 +126,19 @@ class MoccaMotion():
                     if (frame_index >= frame_total):
                         break
                     pose_target = motion.frames[frame_index].pose
-                    rospy.loginfo('frame_index:', frame_index, 'pose:', pose_target.angles)
+                    # rospy.loginfo('frame_index: %d, pose: %s', frame_index, pose_target.angles)
 
-                    # pos = self.dxlDegToPos(pose_target.angles[7], -1)
-                    # self.dxlPosition(DXL_ID, pos)
-                    # rospy.loginfo('[DXL]', pose_target.angles[6], ' => ', pos)
+                    pub_msg = Float32MultiArray();
+                    pub_msg.layout = MultiArrayLayout()
+                    pub_msg.layout.data_offset = int(motion.frames[frame_index].eta * 1000)
+                    pub_msg.data = pose_target.angles
+                    self.pubPose.publish(pub_msg)
+                    rospy.loginfo('Publish %s', str(pub_msg))
+
+                    # for i in range(len(pose_target.angles)):
+                    #     pos = self.dxlDegToPos(pose_target.angles[i], self.DXL_DR[i])
+                    #     self.dxlPosition(self.DXL_ID[i], pos)
+                    #     rospy.loginfo('[DXL] angle: %f, position: %d', pose_target.angles[i], pos)
                     continue
 
                 del joint_state.name[:]
@@ -220,14 +161,14 @@ class MoccaMotion():
                 rate.sleep()
             self._result.success = True
             rospy.loginfo('success')
-        except:
+        except Exception as e:
             self._result.success = False
-            rospy.logerr('fail')
+            rospy.logerr(str(e))
 
 
         rospy.loginfo('done')
         # rospy.loginfo(joint_state)
-        rate.sleep()
+        # rate.sleep()
         self.server.set_succeeded(self._result)
 
 
